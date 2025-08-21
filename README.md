@@ -240,15 +240,3 @@ Built-in database includes:
 3. Add tests for new functionality
 4. Ensure all tests pass
 5. Submit a pull request
-
-## 📄 License
-
-This project is for defensive security purposes only. Use responsibly and in accordance with applicable laws and regulations.
-
-## 🆘 Support
-
-For issues and feature requests, please create an issue in the repository.
-
----
-
-**⚠️ Important**: This tool is designed for defensive security analysis only. Do not use for malicious purposes.
