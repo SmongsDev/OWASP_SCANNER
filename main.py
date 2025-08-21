@@ -129,31 +129,108 @@ if __name__ == "__main__":
     scanner = OWASPStaticAnalyzer()
     
     sample_input = {
-        "project_id": "test_project_001",
+        "project_id": "js_webapp_demo",
         "source_files": [
             {
-                "path": "/backend/views/auth.py",
-                "language": "python",
-                "content": """import hashlib
-def login_user(request):
-    password = 'admin123'
-    username = request.GET.get('username')
-    query = f"SELECT * FROM users WHERE name='{username}'"
-    cursor.execute(query)"""
+                "path": "/backend/auth.js",
+                "language": "javascript",
+                "content": """const jwt = require('jsonwebtoken');
+const express = require('express');
+
+class AuthController {
+    // JWT with weak secret
+    generateToken(payload) {
+        return jwt.sign(payload, "secret123");
+    }
+    
+    // SQL Injection vulnerability
+    loginUser(req, res) {
+        const { username, password } = req.body;
+        const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`;
+        db.query(query);
+    }
+    
+    // Hardcoded credentials
+    setupAdmin() {
+        const adminPassword = "admin123";
+        const apiKey = "sk-1234567890abcdef";
+        return { adminPassword, apiKey };
+    }
+}"""
             },
             {
-                "path": "/frontend/js/user.js",
-                "language": "javascript", 
-                "content": """function displayUser(userData) {
-    document.getElementById('user-info').innerHTML = userData.name;
-    eval(userData.script);
+                "path": "/frontend/app.js",
+                "language": "javascript",
+                "content": """// XSS vulnerabilities
+function updateProfile(userData) {
+    document.getElementById('profile').innerHTML = userData.bio + ' Profile';
+    $('#user-name').html(userData.name + ' Details');
+    
+    // Code injection
+    eval('var result = ' + userData.script);
+    setTimeout('executeCode("' + userData.command + '")', 1000);
+}
+
+// Command injection
+function processFile(filename) {
+    const { exec } = require('child_process');
+    exec('cat ' + filename);
+}
+
+// Insecure storage
+function storeCredentials(password) {
+    localStorage.setItem('userPassword', password);
+    const hash = btoa(password); // Base64 is not encryption
+}"""
+            },
+            {
+                "path": "/config/database.ts",
+                "language": "typescript",
+                "content": """interface DBConfig {
+    host: string;
+    password: string;
+    apiKey: string;
+}
+
+const dbConfig: DBConfig = {
+    host: 'localhost',
+    password: 'database123',  // Hardcoded password
+    apiKey: 'api-key-hardcoded-12345'  // Hardcoded API key
+};
+
+// Weak hashing
+import crypto from 'crypto';
+function hashPassword(password: string): string {
+    return crypto.createHash('md5').update(password).digest('hex');
+}
+
+// Authentication bypass
+function authenticateUser(): boolean {
+    const isAuth = true;  // Always returns true
+    return isAuth;
 }"""
             }
         ],
         "dependency_files": [
             {
-                "type": "requirements.txt",
-                "content": "Django==2.2.0\npsycopg2==2.9.3\nlodash==4.17.20"
+                "type": "package.json",
+                "content": """
+{
+  "name": "vulnerable-js-app",
+  "version": "1.0.0",
+  "dependencies": {
+    "express": "4.16.0",
+    "lodash": "4.17.15",
+    "jsonwebtoken": "8.5.0",
+    "axios": "0.21.1",
+    "mongoose": "5.13.14",
+    "moment": "2.29.1"
+  },
+  "devDependencies": {
+    "webpack": "4.44.0"
+  }
+}
+"""
             }
         ]
     }

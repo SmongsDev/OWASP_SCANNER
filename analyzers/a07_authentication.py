@@ -26,8 +26,8 @@ class A07AuthenticationAnalyzer:
             r'(md5|MD5)\s*\(',
             r'(sha1|SHA1)\s*\(',
             r'hashlib\.(md5|sha1)\s*\(',
-            r'MessageDigest\.getInstance\s*\(\s*[\'\"](?:MD5|SHA1|SHA-1)[\'\"]\s*\)',
-            r'crypto\.createHash\s*\(\s*[\'\"](?:md5|sha1)[\'\"]\s*\)'
+            r'MessageDigest\.getInstance\s*\(\s*[\'\"](MD5|SHA1|SHA-1)[\'\"]\s*\)',
+            r'crypto\.createHash\s*\(\s*[\'\"](md5|sha1)[\'\"]\s*\)'
         ]
         
         self.insecure_session_patterns = [
@@ -186,37 +186,111 @@ class A07AuthenticationAnalyzer:
     def _analyze_javascript_auth_patterns(self, file_path: str, lines: List[str]) -> List[Vulnerability]:
         vulnerabilities = []
         
-        jwt_patterns = [
-            r'jwt\.sign\s*\(\s*.*,\s*[\'\"]\w{1,10}[\'\"]\s*\)',
-            r'jsonwebtoken\.sign\s*\(\s*.*,\s*[\'\"]\w{1,10}[\'\"]\s*\)'
-        ]
+        # Enhanced JavaScript authentication vulnerability patterns
+        js_auth_patterns = {
+            'weak_jwt_secret': [
+                (r'jwt\.sign\s*\(\s*.*,\s*[\'\"]\w{1,10}[\'\"]\s*\)', 'JWT signed with weak secret', 'HIGH', 0.85),
+                (r'jsonwebtoken\.sign\s*\(\s*.*,\s*[\'\"]\w{1,10}[\'\"]\s*\)', 'JWT signed with weak secret', 'HIGH', 0.85),
+                (r'jwt\.sign\s*\(\s*.*,\s*[\'\"](secret|test|dev|admin|key)[\'\"]\s*\)', 'JWT signed with predictable secret', 'CRITICAL', 0.95)
+            ],
+            'hardcoded_api_keys': [
+                (r'(api_key|apikey|api-key)\s*[:=]\s*[\'\"]\w{10,}[\'\"]\s*', 'Hardcoded API key detected', 'HIGH', 0.9),
+                (r'(bearer|authorization)\s*[:=]\s*[\'\"](Bearer\s+)?\w{20,}[\'\"]\s*', 'Hardcoded authorization token', 'HIGH', 0.85),
+                (r'(access_token|accessToken)\s*[:=]\s*[\'\"]\w{15,}[\'\"]\s*', 'Hardcoded access token', 'HIGH', 0.9),
+                (r'(client_secret|clientSecret)\s*[:=]\s*[\'\"]\w{10,}[\'\"]\s*', 'Hardcoded OAuth client secret', 'CRITICAL', 0.95)
+            ],
+            'insecure_password_handling': [
+                (r'password\s*[:=]\s*[\'\"](password|123|admin|test|guest)[\'\"]\s*', 'Weak default password', 'HIGH', 0.95),
+                (r'(md5|sha1)\s*\(\s*password', 'Weak password hashing algorithm', 'HIGH', 0.9),
+                (r'btoa\s*\(\s*.*password.*\)', 'Base64 encoding is not encryption for passwords', 'MEDIUM', 0.8),
+                (r'localStorage\.setItem\s*\(\s*[\'\"]\w*password\w*[\'\"]\s*,', 'Password stored in localStorage', 'HIGH', 0.9),
+                (r'sessionStorage\.setItem\s*\(\s*[\'\"]\w*password\w*[\'\"]\s*,', 'Password stored in sessionStorage', 'MEDIUM', 0.8)
+            ],
+            'insecure_session_management': [
+                (r'express\.session\s*\(\s*\{[^}]*secure\s*:\s*false', 'Session cookie not marked as secure', 'MEDIUM', 0.8),
+                (r'express\.session\s*\(\s*\{[^}]*httpOnly\s*:\s*false', 'Session cookie not marked as httpOnly', 'MEDIUM', 0.8),
+                (r'document\.cookie\s*=\s*.*\+', 'Insecure cookie manipulation', 'MEDIUM', 0.7),
+                (r'maxAge\s*:\s*[0-9]{1,6}[^0-9]', 'Very short session timeout', 'LOW', 0.6)
+            ],
+            'oauth_security_issues': [
+                (r'client_secret\s*[:=]\s*[\'\"]\w+[\'\"]\s*', 'OAuth client secret in code', 'CRITICAL', 0.95),
+                (r'redirect_uri\s*[:=]\s*[\'\"]\w+[\'\"]\s*', 'Hardcoded OAuth redirect URI', 'MEDIUM', 0.7),
+                (r'state\s*[:=]\s*[\'\"](static|fixed|123)[\'\"]\s*', 'Weak OAuth state parameter', 'HIGH', 0.85)
+            ],
+            'crypto_misuse': [
+                (r'crypto\.createHash\s*\(\s*[\'\"](md5|sha1)[\'\"]\s*\)', 'Weak cryptographic hash', 'HIGH', 0.9),
+                (r'CryptoJS\.(MD5|SHA1)\s*\(', 'Weak client-side hashing', 'HIGH', 0.85),
+                (r'Math\.random\s*\(\s*\).*secret', 'Weak random number generation for secrets', 'HIGH', 0.9),
+                (r'Date\.now\s*\(\s*\).*secret', 'Predictable secret generation', 'HIGH', 0.85)
+            ],
+            'authentication_bypass': [
+                (r'if\s*\(\s*true\s*\).*auth', 'Authentication bypass detected', 'CRITICAL', 0.9),
+                (r'(auth|login|verify)\s*=\s*true\s*;', 'Hardcoded authentication bypass', 'CRITICAL', 0.95),
+                (r'(isAdmin|isAuth|authenticated)\s*=\s*true\s*;', 'Hardcoded privilege escalation', 'CRITICAL', 0.95)
+            ],
+            'cors_misconfiguration': [
+                (r'Access-Control-Allow-Origin.*\*', 'CORS wildcard origin allows any domain', 'MEDIUM', 0.8),
+                (r'cors\s*\(\s*\{[^}]*origin\s*:\s*true', 'CORS allows any origin', 'MEDIUM', 0.75),
+                (r'res\.header\s*\(\s*[\'\"]\s*Access-Control-Allow-Origin[\'\"]\s*,\s*[\'\"]?\*', 'Unsafe CORS header', 'MEDIUM', 0.8)
+            ]
+        }
         
         for line_num, line in enumerate(lines, 1):
             line = line.strip()
-            if not line or line.startswith('//'):
+            if not line or line.startswith('//') or line.startswith('/*'):
                 continue
             
-            for pattern in jwt_patterns:
-                matches = re.finditer(pattern, line, re.IGNORECASE)
-                for match in matches:
-                    vuln = Vulnerability(
-                        id=self._generate_vuln_id(),
-                        owasp_category=OwaspCategory.A07.value,
-                        type='weak_jwt_secret',
-                        severity=Severity.HIGH.value,
-                        confidence=0.8,
-                        file_path=file_path,
-                        line_number=line_num,
-                        column=match.start(),
-                        code_snippet=line[:80] + '...' if len(line) > 80 else line,
-                        description='Weak JWT secret detected',
-                        recommendation='Use strong, randomly generated JWT secrets with sufficient entropy',
-                        cwe_id='CWE-326',
-                        detection_method='regex_pattern_matching'
-                    )
-                    vulnerabilities.append(vuln)
+            for vuln_type, patterns in js_auth_patterns.items():
+                for pattern, description, severity, confidence in patterns:
+                    matches = re.finditer(pattern, line, re.IGNORECASE)
+                    for match in matches:
+                        # Map string severity to enum value
+                        severity_value = getattr(Severity, severity).value
+                        
+                        vuln = Vulnerability(
+                            id=self._generate_vuln_id(),
+                            owasp_category=OwaspCategory.A07.value,
+                            type=vuln_type,
+                            severity=severity_value,
+                            confidence=confidence,
+                            file_path=file_path,
+                            line_number=line_num,
+                            column=match.start(),
+                            code_snippet=line[:80] + '...' if len(line) > 80 else line,
+                            description=f'JavaScript authentication vulnerability: {description}',
+                            recommendation=self._get_js_auth_recommendation(vuln_type),
+                            cwe_id=self._get_js_auth_cwe_id(vuln_type),
+                            detection_method='regex_pattern_matching'
+                        )
+                        vulnerabilities.append(vuln)
         
         return vulnerabilities
+    
+    def _get_js_auth_recommendation(self, vuln_type: str) -> str:
+        recommendations = {
+            'weak_jwt_secret': 'Use cryptographically strong secrets (32+ characters) and store in environment variables',
+            'hardcoded_api_keys': 'Store API keys in environment variables or secure credential stores',
+            'insecure_password_handling': 'Use bcrypt or scrypt for password hashing, never store passwords in browser storage',
+            'insecure_session_management': 'Set secure and httpOnly flags for session cookies, use appropriate timeouts',
+            'oauth_security_issues': 'Never expose client secrets, use PKCE for public clients, validate state parameters',
+            'crypto_misuse': 'Use SHA-256 or stronger algorithms, use cryptographically secure random generators',
+            'authentication_bypass': 'Remove hardcoded authentication bypasses, implement proper access controls',
+            'cors_misconfiguration': 'Specify exact allowed origins, avoid wildcard CORS policies'
+        }
+        return recommendations.get(vuln_type, 'Review authentication implementation and follow security best practices')
+    
+    def _get_js_auth_cwe_id(self, vuln_type: str) -> str:
+        cwe_mappings = {
+            'weak_jwt_secret': 'CWE-326',
+            'hardcoded_api_keys': 'CWE-798',
+            'insecure_password_handling': 'CWE-916',
+            'insecure_session_management': 'CWE-614',
+            'oauth_security_issues': 'CWE-346',
+            'crypto_misuse': 'CWE-327',
+            'authentication_bypass': 'CWE-287',
+            'cors_misconfiguration': 'CWE-942'
+        }
+        return cwe_mappings.get(vuln_type, 'CWE-287')
     
     def _extract_credential_value(self, line: str, match) -> Optional[str]:
         try:

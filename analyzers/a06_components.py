@@ -30,6 +30,51 @@ class A06ComponentAnalyzer:
                 '4.17.1': [{'cve': 'CVE-2022-24999', 'severity': 'MEDIUM', 'description': 'Open redirect vulnerability'}],
                 '4.16.0': [{'cve': 'CVE-2017-16119', 'severity': 'LOW', 'description': 'Debug information exposure'}]
             },
+            # JavaScript/Node.js specific vulnerabilities
+            'axios': {
+                '0.21.1': [{'cve': 'CVE-2021-3749', 'severity': 'HIGH', 'description': 'SSRF vulnerability in axios'}],
+                '0.19.0': [{'cve': 'CVE-2020-28168', 'severity': 'MEDIUM', 'description': 'SSRF via malicious URL'}]
+            },
+            'node-fetch': {
+                '2.6.6': [{'cve': 'CVE-2022-0235', 'severity': 'HIGH', 'description': 'Exposure of sensitive information'}],
+                '2.6.0': [{'cve': 'CVE-2020-15168', 'severity': 'MEDIUM', 'description': 'Size limit bypass'}]
+            },
+            'jsonwebtoken': {
+                '8.5.1': [{'cve': 'CVE-2022-23529', 'severity': 'HIGH', 'description': 'Token verification bypass'}],
+                '8.5.0': [{'cve': 'CVE-2022-23540', 'severity': 'MEDIUM', 'description': 'Algorithm confusion'}]
+            },
+            'socket.io': {
+                '4.4.1': [{'cve': 'CVE-2022-2421', 'severity': 'MEDIUM', 'description': 'CORS bypass vulnerability'}],
+                '3.1.0': [{'cve': 'CVE-2020-36048', 'severity': 'HIGH', 'description': 'Insufficient input validation'}]
+            },
+            'mongoose': {
+                '5.13.14': [{'cve': 'CVE-2022-24304', 'severity': 'HIGH', 'description': 'Prototype pollution in query parsing'}],
+                '5.9.0': [{'cve': 'CVE-2020-7731', 'severity': 'MEDIUM', 'description': 'ReDoS in validation'}]
+            },
+            'sequelize': {
+                '6.6.2': [{'cve': 'CVE-2021-23436', 'severity': 'HIGH', 'description': 'SQL injection in JSON query'}],
+                '5.21.0': [{'cve': 'CVE-2020-15237', 'severity': 'MEDIUM', 'description': 'SQL injection in JSONB'}]
+            },
+            'ws': {
+                '7.5.5': [{'cve': 'CVE-2021-32640', 'severity': 'HIGH', 'description': 'ReDoS in sec-websocket-protocol header'}],
+                '6.2.1': [{'cve': 'CVE-2020-7662', 'severity': 'MEDIUM', 'description': 'ReDoS in validation'}]
+            },
+            'moment': {
+                '2.29.1': [{'cve': 'CVE-2022-24785', 'severity': 'HIGH', 'description': 'Path traversal via locale'}],
+                '2.27.0': [{'cve': 'CVE-2020-15366', 'severity': 'MEDIUM', 'description': 'ReDoS in parsing'}]
+            },
+            'helmet': {
+                '4.6.0': [{'cve': 'CVE-2021-23406', 'severity': 'MEDIUM', 'description': 'CSP bypass via iframe-src'}]
+            },
+            'passport': {
+                '0.4.1': [{'cve': 'CVE-2021-23334', 'severity': 'MEDIUM', 'description': 'Session fixation vulnerability'}]
+            },
+            'cors': {
+                '2.8.5': [{'cve': 'CVE-2020-7729', 'severity': 'MEDIUM', 'description': 'CORS misconfiguration'}]
+            },
+            'multer': {
+                '1.4.2': [{'cve': 'CVE-2021-23362', 'severity': 'HIGH', 'description': 'Directory traversal in file upload'}]
+            },
             'psycopg2': {
                 '2.8.0': [{'cve': 'CVE-2020-25659', 'severity': 'MEDIUM', 'description': 'Buffer overflow'}]
             },
@@ -59,7 +104,27 @@ class A06ComponentAnalyzer:
             'spring-core': '6.0.13',
             'jackson-databind': '2.15.3',
             'log4j-core': '2.20.0',
-            'requests': '2.31.0'
+            'requests': '2.31.0',
+            # JavaScript/Node.js latest versions
+            'axios': '1.6.2',
+            'node-fetch': '3.3.2',
+            'jsonwebtoken': '9.0.2',
+            'socket.io': '4.7.4',
+            'mongoose': '8.0.3',
+            'sequelize': '6.35.2',
+            'ws': '8.15.1',
+            'moment': '2.29.4',
+            'helmet': '7.1.0',
+            'passport': '0.7.0',
+            'cors': '2.8.5',
+            'multer': '1.4.5',
+            'react': '18.2.0',
+            'vue': '3.3.8',
+            'angular': '17.0.0',
+            'next': '14.0.4',
+            'webpack': '5.89.0',
+            'babel-core': '7.23.5',
+            'typescript': '5.3.3'
         }
     
     def analyze_dependencies(self, dependency_file: dict) -> List[Vulnerability]:
