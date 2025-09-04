@@ -6,6 +6,8 @@ Detects vulnerable dependencies and outdated packages
 import json
 import re
 import xml.etree.ElementTree as ET
+import requests
+import time
 from typing import List, Dict, Tuple, Optional
 from models import Vulnerability, Severity, OwaspCategory
 
@@ -13,6 +15,8 @@ from models import Vulnerability, Severity, OwaspCategory
 class A06ComponentAnalyzer:
     def __init__(self):
         self.vuln_counter = 0
+        self.api_cache = {}
+        self.cache_timeout = 3600  # 1시간 캐싱
         
         self.vulnerability_db = {
             'django': {
@@ -278,9 +282,14 @@ class A06ComponentAnalyzer:
         return vulnerabilities
     
     def _check_outdated_package(self, package_name: str, package_version: str, file_type: str) -> Optional[Vulnerability]:
-        if package_name in self.latest_versions:
-            latest_version = self.latest_versions[package_name]
-            
+        # 먼저 API에서 최신 버전을 확인
+        ecosystem = self._get_ecosystem_from_file_type(file_type)
+        api_latest_version = self._get_latest_version_from_api(package_name, ecosystem)
+        
+        # API에서 가져온 버전이 있으면 우선 사용, 없으면 하드코딩된 버전 사용
+        latest_version = api_latest_version or self.latest_versions.get(package_name)
+        
+        if latest_version:
             try:
                 if self._compare_versions(package_version, latest_version) < 0:
                     versions_behind = self._calculate_versions_behind(package_version, latest_version)
@@ -301,7 +310,7 @@ class A06ComponentAnalyzer:
                         line_number=1,
                         column=1,
                         code_snippet=f'{package_name}=={package_version}',
-                        description=f'Outdated component: {package_name} {package_version} (latest: {latest_version})',
+                        description=f'Outdated component: {package_name} {package_version} (latest: {latest_version}){" [API updated]" if api_latest_version else ""}',
                         recommendation=f'Update {package_name} to version {latest_version}',
                         cwe_id='CWE-1104',
                         detection_method='version_comparison'
@@ -311,6 +320,17 @@ class A06ComponentAnalyzer:
                 pass
         
         return None
+    
+    def _get_ecosystem_from_file_type(self, file_type: str) -> str:
+        """파일 타입에서 생태계를 결정합니다."""
+        ecosystem_map = {
+            'requirements.txt': 'pypi',
+            'package.json': 'npm',
+            'pom.xml': 'maven',
+            'Gemfile': 'rubygems',  # 아직 구현 안됨
+            'composer.json': 'packagist'  # 아직 구현 안됨
+        }
+        return ecosystem_map.get(file_type, 'unknown')
     
     def _calculate_versions_behind(self, current_version: str, latest_version: str) -> int:
         try:
@@ -357,6 +377,100 @@ class A06ComponentAnalyzer:
         except:
             return 0
     
+    def _get_latest_version_from_api(self, package_name: str, ecosystem: str) -> Optional[str]:
+        """API를 통해 최신 버전 정보를 가져옵니다."""
+        cache_key = f"{ecosystem}:{package_name}"
+        
+        # 캐시 확인
+        if cache_key in self.api_cache:
+            cached_data = self.api_cache[cache_key]
+            if time.time() - cached_data['timestamp'] < self.cache_timeout:
+                return cached_data['version']
+        
+        try:
+            if ecosystem == 'pypi':
+                return self._fetch_pypi_latest_version(package_name)
+            elif ecosystem == 'npm':
+                return self._fetch_npm_latest_version(package_name)
+            elif ecosystem == 'maven':
+                return self._fetch_maven_latest_version(package_name)
+        except Exception as e:
+            print(f"API 호출 실패 for {package_name}: {e}")
+            return None
+        
+        return None
+    
+    def _fetch_pypi_latest_version(self, package_name: str) -> Optional[str]:
+        """PyPI API에서 최신 버전을 가져옵니다."""
+        url = f"https://pypi.org/pypi/{package_name}/json"
+        
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                latest_version = data['info']['version']
+                
+                # 캐시에 저장
+                cache_key = f"pypi:{package_name}"
+                self.api_cache[cache_key] = {
+                    'version': latest_version,
+                    'timestamp': time.time()
+                }
+                
+                return latest_version
+        except Exception as e:
+            print(f"PyPI API 오류 for {package_name}: {e}")
+        
+        return None
+    
+    def _fetch_npm_latest_version(self, package_name: str) -> Optional[str]:
+        """npm registry API에서 최신 버전을 가져옵니다."""
+        url = f"https://registry.npmjs.org/{package_name}"
+        
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                latest_version = data['dist-tags']['latest']
+                
+                # 캐시에 저장
+                cache_key = f"npm:{package_name}"
+                self.api_cache[cache_key] = {
+                    'version': latest_version,
+                    'timestamp': time.time()
+                }
+                
+                return latest_version
+        except Exception as e:
+            print(f"npm API 오류 for {package_name}: {e}")
+        
+        return None
+    
+    def _fetch_maven_latest_version(self, package_name: str) -> Optional[str]:
+        """Maven Central API에서 최신 버전을 가져옵니다."""
+        # artifactId만 사용하여 검색 (실제로는 groupId도 필요하지만 단순화)
+        url = f"https://search.maven.org/solrsearch/select?q=a:{package_name}&rows=1&wt=json"
+        
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data['response']['docs']:
+                    latest_version = data['response']['docs'][0]['latestVersion']
+                    
+                    # 캐시에 저장
+                    cache_key = f"maven:{package_name}"
+                    self.api_cache[cache_key] = {
+                        'version': latest_version,
+                        'timestamp': time.time()
+                    }
+                    
+                    return latest_version
+        except Exception as e:
+            print(f"Maven API 오류 for {package_name}: {e}")
+        
+        return None
+
     def _generate_vuln_id(self) -> str:
         self.vuln_counter += 1
         return f"A06_{self.vuln_counter:03d}"
